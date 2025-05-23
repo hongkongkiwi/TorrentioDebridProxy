@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,10 +26,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image name
+        id: meta
+        run: |
+          IMAGE_NAME="ghcr.io/${{ github.repository }}:latest"
+          IMAGE_NAME_LC=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME_LC=$IMAGE_NAME_LC" >> $GITHUB_OUTPUT
+
       - name: Build Docker image
         run: |
-          docker build . -t ghcr.io/${{ github.repository }}:latest
+          docker build . -t ${{ steps.meta.outputs.IMAGE_NAME_LC }}
 
       - name: Push Docker image
         run: |
-          docker push ghcr.io/${{ github.repository }}:latest
+          docker push ${{ steps.meta.outputs.IMAGE_NAME_LC }}
