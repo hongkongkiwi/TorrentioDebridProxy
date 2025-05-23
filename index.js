@@ -10,6 +10,30 @@ const axios = require("axios");
 const addon = express();
 const PORT = process.env.PORT || 13470;
 
+const API_KEY = process.env.API_KEY;
+
+if (API_KEY) {
+    console.log("API_KEY is set. All requests will require it as an 'api_key=your_key' URL query parameter.");
+}
+
+// Middleware to check for API key if defined
+const checkApiKey = (req, res, next) => {
+    if (API_KEY) {
+        if (req.query.api_key !== API_KEY) {
+
+            console.warn(`Access Denied: Incorrect or missing api_key. Path: ${req.originalUrl}`);
+            if (res.socket && !res.socket.destroyed) {
+                res.socket.destroy();
+            }
+            return;
+        }
+    }
+    next();
+};
+
+// Apply this middleware to all routes
+addon.use(checkApiKey);
+
 // Normalize and validate TORRENTIO_URL
 let rawTorrentioUrl = process.env.TORRENTIO_URL || "";
 if (rawTorrentioUrl.startsWith("stremio://")) {
@@ -59,7 +83,7 @@ addon.get("/manifest.json", (req, res) => {
 // Serve stream metadata, and rewrite RD URLs to point through this proxy
 addon.get("/stream/:type/:id.json", async (req, res) => {
     const { type, id } = req.params;
-    console.log("Incoming stream request:", type, id);
+    console.log("Processing stream request (access-checked):", type, id);
 
     const apiUrl = type === "movie"
         ? `${TORRENTIO_URL}/stream/movie/${id}.json`
@@ -70,9 +94,17 @@ addon.get("/stream/:type/:id.json", async (req, res) => {
 
         const streams = (data.streams || []).map(stream => {
             if (!stream.url.includes("/realdebrid/")) return stream;
+
+            let newUrl = stream.url.replace("https://torrentio.strem.fun", PROXY_SERVER_URL);
+            
+            if (API_KEY) {
+                const separator = newUrl.includes('?') ? '&' : '?';
+                newUrl += `${separator}api_key=${encodeURIComponent(API_KEY)}`;
+            }
+            
             return {
                 ...stream,
-                url: stream.url.replace("https://torrentio.strem.fun", PROXY_SERVER_URL)
+                url: newUrl
             };
         });
 
@@ -107,20 +139,26 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
             });
 
             if (proxyResp.status === 404 && !isRetry) {
-                console.warn("Cached Real-Debrid URL returned 404. Retrying without cache.");
+                console.warn("Cached Real-Debrid URL returned 404. Retrying without cache for path:", remotePath);
                 resolvedUrlCache.delete(remotePath);
 
-                const retryUrl = await resolveRDUrl(torrentioUrl);
+                const retryUrl = await resolveRDUrl(`https://torrentio.strem.fun/realdebrid/${remotePath}`);
                 if (!retryUrl) {
-                    return res.status(502).send("Failed to resolve stream URL after retry");
+                    if (res.writableEnded === false && !res.destroyed && !(res.socket && res.socket.destroyed)) {
+                        return res.status(502).send("Failed to resolve stream URL after retry");
+                    }
+                    return;
                 }
 
                 return tryFetchAndProxy(retryUrl, true);
             }
 
             if (!proxyResp.ok) {
-                console.error("Remote fetch failed with status:", proxyResp.status);
-                return res.status(proxyResp.status).send("Failed to fetch stream");
+                console.error(`Remote fetch failed for ${url} with status: ${proxyResp.status}`);
+                if (res.writableEnded === false && !res.destroyed && !(res.socket && res.socket.destroyed)) {
+                    return res.status(proxyResp.status).send("Failed to fetch stream");
+                }
+                return;
             }
 
             res.status(proxyResp.status);
@@ -128,12 +166,12 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
 
             const TIMEOUT_MS = 5 * 60 * 1000;
             let timeout = setTimeout(() => {
-                console.log("No activity detected. Aborting stream.");
+                console.log(`No activity detected for stream ${remotePath}. Aborting stream.`);
                 controller.abort();
             }, TIMEOUT_MS);
 
             res.on("close", () => {
-                console.log("Client disconnected.");
+                console.log(`Client disconnected for stream ${remotePath}.`);
                 clearTimeout(timeout);
                 controller.abort();
             });
@@ -141,7 +179,7 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
             proxyResp.body.on("data", () => {
                 clearTimeout(timeout);
                 timeout = setTimeout(() => {
-                    console.log("Idle timeout reached. Aborting stream.");
+                    console.log(`Idle timeout reached for stream ${remotePath}. Aborting stream.`);
                     controller.abort();
                 }, TIMEOUT_MS);
             });
@@ -149,25 +187,34 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
             proxyResp.body.pipe(res);
         } catch (err) {
             if (err.name === "AbortError") {
-                console.warn("Stream aborted due to inactivity or disconnect.");
+                console.warn(`Stream aborted for ${remotePath} due to inactivity or disconnect.`);
             } else {
-                console.error("Error while proxying stream:", err.message);
+                console.error(`Error while proxying stream ${remotePath}:`, err.message);
             }
 
             if (!res.headersSent) {
-                res.status(502).send("Proxy failed");
+                if (res.writableEnded === false && !res.destroyed && !(res.socket && res.socket.destroyed)) {
+                     res.status(502).send("Proxy failed");
+                } else {
+                    console.warn("Response headers already sent or socket destroyed, cannot send error status for proxy failure.");
+                }
             }
         }
     };
 
     if (resolvedUrlCache.has(remotePath)) {
         const cachedUrl = resolvedUrlCache.get(remotePath);
-        console.log("Using cached redirect URL:", cachedUrl);
+        console.log("Using cached redirect URL for path:", remotePath, "URL:", cachedUrl);
         return tryFetchAndProxy(cachedUrl);
     }
 
     const newUrl = await resolveRDUrl(torrentioUrl);
-    if (!newUrl) return res.status(502).send("Failed to resolve stream URL");
+    if (!newUrl) {
+        if (res.writableEnded === false && !res.destroyed && !(res.socket && res.socket.destroyed)) {
+            return res.status(502).send("Failed to resolve stream URL");
+        }
+        return;
+    }
 
     return tryFetchAndProxy(newUrl);
 }
@@ -182,15 +229,20 @@ async function resolveRDUrl(torrentioUrl) {
 
         const redirectedUrl = initialResp.headers.get("location");
         if (!redirectedUrl) {
-            console.error("Redirect location header not found.");
+            console.error("Redirect location header not found for:", torrentioUrl);
             return null;
         }
 
-        resolvedUrlCache.set(torrentioUrl.split("/realdebrid/")[1], redirectedUrl);
-        console.log("Redirect resolved to:", redirectedUrl);
+        const cacheKey = torrentioUrl.split("/realdebrid/")[1];
+        if (cacheKey) {
+             resolvedUrlCache.set(cacheKey, redirectedUrl);
+             console.log("Redirect resolved to:", redirectedUrl, "and cached with key:", cacheKey);
+        } else {
+            console.warn("Could not determine cache key for resolved URL:", redirectedUrl, "from original:", torrentioUrl);
+        }
         return redirectedUrl;
     } catch (err) {
-        console.error("Error resolving redirect:", err.message);
+        console.error("Error resolving redirect for:", torrentioUrl, err.message);
         return null;
     }
 }
