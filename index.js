@@ -10,8 +10,26 @@ const axios = require("axios");
 const addon = express();
 const PORT = process.env.PORT || 13470;
 
-const BASE_URL = process.env.BASE_URL;
-const LOCAL_HOST = process.env.LOCAL_HOST;
+// Normalize and validate TORRENTIO_URL
+let rawTorrentioUrl = process.env.TORRENTIO_URL || "";
+if (rawTorrentioUrl.startsWith("stremio://")) {
+    rawTorrentioUrl = rawTorrentioUrl.replace("stremio://", "https://");
+}
+if (rawTorrentioUrl.endsWith("/manifest.json")) {
+    rawTorrentioUrl = rawTorrentioUrl.replace(/\/manifest\.json$/, "");
+}
+if (!rawTorrentioUrl.startsWith("https://")) {
+    console.error("TORRENTIO_URL must be defined and start with https://");
+    process.exit(1);
+}
+const TORRENTIO_URL = rawTorrentioUrl;
+
+// Validate PROXY_SERVER_URL (existence only)
+const PROXY_SERVER_URL = process.env.PROXY_SERVER_URL;
+if (!PROXY_SERVER_URL) {
+    console.error("PROXY_SERVER_URL must be defined");
+    process.exit(1);
+}
 
 // Respond helper to set common headers for all responses
 const respond = (res, data) => {
@@ -44,18 +62,17 @@ addon.get("/stream/:type/:id.json", async (req, res) => {
     console.log("Incoming stream request:", type, id);
 
     const apiUrl = type === "movie"
-        ? `${BASE_URL}/stream/movie/${id}.json`
-        : `${BASE_URL}/stream/series/${id}.json`;
+        ? `${TORRENTIO_URL}/stream/movie/${id}.json`
+        : `${TORRENTIO_URL}/stream/series/${id}.json`;
 
     try {
         const { data } = await axios.get(apiUrl);
 
-        // Replace RD URLs to be proxied through this server
         const streams = (data.streams || []).map(stream => {
             if (!stream.url.includes("/realdebrid/")) return stream;
             return {
                 ...stream,
-                url: stream.url.replace("https://torrentio.strem.fun", LOCAL_HOST)
+                url: stream.url.replace("https://torrentio.strem.fun", PROXY_SERVER_URL)
             };
         });
 
@@ -76,10 +93,6 @@ addon.get("/realdebrid/*", (req, res) => {
     tryProxyStreamWithFallback(remotePath, rangeHeader, res);
 });
 
-/**
- * Attempts to proxy a Real-Debrid URL.
- * If the first attempt fails with a 404 and it's cached, retry without cache.
- */
 async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
     const torrentioUrl = `https://torrentio.strem.fun/realdebrid/${remotePath}`;
 
@@ -93,7 +106,6 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
                 signal
             });
 
-            // If the cached URL returned 404, retry after cache busting
             if (proxyResp.status === 404 && !isRetry) {
                 console.warn("Cached Real-Debrid URL returned 404. Retrying without cache.");
                 resolvedUrlCache.delete(remotePath);
@@ -106,13 +118,11 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
                 return tryFetchAndProxy(retryUrl, true);
             }
 
-            // Handle other fetch errors
             if (!proxyResp.ok) {
                 console.error("Remote fetch failed with status:", proxyResp.status);
                 return res.status(proxyResp.status).send("Failed to fetch stream");
             }
 
-            // Stream response to client
             res.status(proxyResp.status);
             proxyResp.headers.forEach((value, key) => res.setHeader(key, value));
 
@@ -122,14 +132,12 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
                 controller.abort();
             }, TIMEOUT_MS);
 
-            // Abort on client disconnect
             res.on("close", () => {
                 console.log("Client disconnected.");
                 clearTimeout(timeout);
                 controller.abort();
             });
 
-            // Reset timeout on activity
             proxyResp.body.on("data", () => {
                 clearTimeout(timeout);
                 timeout = setTimeout(() => {
@@ -152,24 +160,18 @@ async function tryProxyStreamWithFallback(remotePath, rangeHeader, res) {
         }
     };
 
-    // If URL is cached, use it
     if (resolvedUrlCache.has(remotePath)) {
         const cachedUrl = resolvedUrlCache.get(remotePath);
         console.log("Using cached redirect URL:", cachedUrl);
         return tryFetchAndProxy(cachedUrl);
     }
 
-    // Resolve new redirect URL
     const newUrl = await resolveRDUrl(torrentioUrl);
     if (!newUrl) return res.status(502).send("Failed to resolve stream URL");
 
     return tryFetchAndProxy(newUrl);
 }
 
-/**
- * Resolves the final Real-Debrid URL by performing a HEAD request
- * and storing the redirect in cache.
- */
 async function resolveRDUrl(torrentioUrl) {
     try {
         console.log("Resolving redirect for:", torrentioUrl);
@@ -184,7 +186,6 @@ async function resolveRDUrl(torrentioUrl) {
             return null;
         }
 
-        // Cache the resolved URL by extracting the path key
         resolvedUrlCache.set(torrentioUrl.split("/realdebrid/")[1], redirectedUrl);
         console.log("Redirect resolved to:", redirectedUrl);
         return redirectedUrl;
@@ -194,7 +195,6 @@ async function resolveRDUrl(torrentioUrl) {
     }
 }
 
-// Start the addon server
 addon.listen(PORT, () => {
     console.log(`Addon server is running on port ${PORT}`);
 });
