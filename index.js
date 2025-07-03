@@ -109,7 +109,7 @@ addon.get("/stream/:type/:id.json", async (req, res) => {
 const resolvedUrlCache = new Map();
 
 // Proxy Real-Debrid streaming URLs
-addon.get("/realdebrid/*", (req, res) => {
+addon.get("/resolve/realdebrid/*", (req, res) => {
     const remotePath = req.params[0];
     const rangeHeader = req.headers["range"];
     tryProxyStreamWithFallback(remotePath, rangeHeader, res);
