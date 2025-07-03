@@ -123,6 +123,7 @@ services:
     environment:
       - PROXY_SERVER_URL={{YOUR_TUNNEL_HOSTNAME}} # e.g., https://stremio-proxy.yourdomain.com (from Cloudflare Tunnel)
       - TORRENTIO_URL={{YOUR_TORRENTIO_URL}} # Your configured Torrentio URL
+      - API_KEY={SECURE_KEY}
       # - PORT=13470 # Optional: Internal port for the addon
     network_mode: "service:gluetun" # Routes traffic through Gluetun
     depends_on:
@@ -174,7 +175,7 @@ services:
 2.  Configure Gluetun with your VPN provider's details.
 3.  In your Cloudflare Tunnel configuration (Zero Trust Dashboard), create a public hostname (this will be your `PROXY_SERVER_URL`) and point its service to `http://gluetun:13470` (or `http://localhost:YOUR_CUSTOM_PORT` if you changed the `PORT` environment variable for `torrentio-debrid-proxy`).
 
-Then run: `docker-compose up -d`
+Then run: `docker-compose up -d` and add the addon to Stremio via {PROXY_SERVER_URL}/manifest.json?api_key={SECURE_KEY}
 
 NOTE: Depending on your Cloudflare Tunnel setup, this method exposes the addon server publicly - be mindful of your network security.
 
