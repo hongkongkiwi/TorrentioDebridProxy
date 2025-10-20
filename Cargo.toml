@@ -1,0 +1,57 @@
+[package]
+name = "torrentio-debrid-proxy"
+version = "1.0.0"
+edition = "2021"
+
+[profile.release]
+opt-level = "z"          # Optimize for size
+lto = true               # Enable link-time optimization
+codegen-units = 1        # Reduce parallel codegen for better optimization
+strip = true             # Strip symbols from binary
+panic = "abort"          # Abort on panic (smaller binary)
+
+[dependencies]
+# Async runtime - minimal features only
+tokio = { version = "1.41", features = ["rt-multi-thread", "net", "time", "macros", "sync"], default-features = false }
+
+# HTTP server - minimal features
+axum = { version = "0.7", default-features = false, features = ["http1", "tokio", "json", "query"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.6", default-features = false, features = ["cors"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# URL parsing and manipulation
+url = "2.5"
+
+# Thread-safe LRU cache with TTL (both async and sync caches)
+moka = { version = "0.12", features = ["future", "sync"] }
+
+# Constant-time comparison for API keys
+subtle = "2.6"
+
+# Environment variables
+dotenvy = "0.15"
+
+# Logging - minimal features
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Async streams
+futures = "0.3"
+bytes = "1.9"
+
+# URL encoding
+urlencoding = "2.1"
+
+# Memory-efficient allocator
+mimalloc = { version = "0.1", default-features = false }

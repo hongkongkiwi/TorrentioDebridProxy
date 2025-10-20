@@ -1,0 +1,30 @@
+# Development files
+.git/
+.gitignore
+.env
+.env.*
+
+# Documentation
+README.md
+CLAUDE.md
+OPTIMIZATIONS.md
+MEMORY_OPTIMIZATION_SUMMARY.md
+*.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Rust build artifacts (will be built in container)
+target/
+# Note: Cargo.lock is intentionally NOT excluded for reproducible builds
+**/*.rs.bk
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

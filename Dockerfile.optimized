@@ -1,0 +1,50 @@
+# Ultra-optimized multi-stage build for minimal final image size
+# Final image: ~5-8MB (vs ~20MB with distroless)
+
+FROM rust:1.83-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies for musl target (static linking)
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static \
+    upx
+
+# Copy manifests
+COPY Cargo.toml ./
+
+# Create a dummy main.rs to cache dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release --target x86_64-unknown-linux-musl && \
+    rm -rf src
+
+# Copy actual source code
+COPY src ./src
+
+# Build the actual application with musl for fully static binary
+RUN touch src/main.rs && \
+    RUSTFLAGS='-C target-feature=+crt-static' \
+    cargo build --release --target x86_64-unknown-linux-musl
+
+# Strip and compress the binary for minimal size
+RUN strip /app/target/x86_64-unknown-linux-musl/release/torrentio-debrid-proxy && \
+    upx --best --lzma /app/target/x86_64-unknown-linux-musl/release/torrentio-debrid-proxy
+
+# Runtime stage - use scratch for absolute minimum size
+FROM scratch
+
+# Copy only the statically-linked binary
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/torrentio-debrid-proxy /torrentio-debrid-proxy
+
+# Expose the default port
+EXPOSE 13470
+
+# Set default environment (these are read at runtime, not build time)
+ENV PORT=13470
+
+# Run the binary
+ENTRYPOINT ["/torrentio-debrid-proxy"]

@@ -1,0 +1,58 @@
+# Optimized multi-stage build for minimal final image (~15-20MB)
+FROM rust:1.83-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies for Alpine (musl)
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static
+
+# Copy manifests
+COPY Cargo.toml Cargo.lock* ./
+
+# Create a dummy main.rs to build dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release --target x86_64-unknown-linux-musl && \
+    rm -rf src
+
+# Copy actual source code
+COPY src ./src
+
+# Build the actual application with static linking
+RUN touch src/main.rs && \
+    RUSTFLAGS='-C target-feature=+crt-static' \
+    cargo build --release --target x86_64-unknown-linux-musl
+
+# Strip the binary to remove debug symbols
+RUN strip /app/target/x86_64-unknown-linux-musl/release/torrentio-debrid-proxy
+
+# Runtime stage - use alpine for minimal glibc-free image
+FROM alpine:3.21
+
+WORKDIR /app
+
+# Install wget for healthchecks
+RUN apk add --no-cache wget
+
+# Copy the statically-linked binary from builder
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/torrentio-debrid-proxy /app/torrentio-debrid-proxy
+
+# Create a non-root user for security
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+# Expose the default port
+EXPOSE 13470
+
+# Set default environment
+ENV PORT=13470
+
+# Run the binary
+CMD ["/app/torrentio-debrid-proxy"]

@@ -1,0 +1,28 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Node.js artifacts (not needed for Rust build)
+node_modules/
+index.js
+package*.json
+
+# Git
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.*
+
+# Documentation
+README.md
+CLAUDE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

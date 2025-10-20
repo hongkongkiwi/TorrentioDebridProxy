@@ -70,3 +70,8 @@ turbo/
 # Docker
 *.local
 docker-compose.override.yml
+
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock

@@ -1,0 +1,249 @@
+version: "3.8"
+
+services:
+  # ============================================================================
+  # Rust Version (Recommended) - Standard Build
+  # ============================================================================
+  torrentio-proxy-rust:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    container_name: torrentio-proxy-rust
+    restart: unless-stopped
+    ports:
+      - "${PORT:-13470}:13470"
+    environment:
+      - PROXY_SERVER_URL=${PROXY_SERVER_URL}
+      - TORRENTIO_URL=${TORRENTIO_URL}
+      - API_KEY=${API_KEY}
+      - PORT=13470
+      - RUST_LOG=${RUST_LOG:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 15M
+          cpus: '0.5'
+        reservations:
+          memory: 5M
+          cpus: '0.1'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:13470/manifest.json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    profiles:
+      - rust
+      - default
+
+  # ============================================================================
+  # Rust Version - Optimized Build (Ultra-minimal ~5-8MB)
+  # ============================================================================
+  torrentio-proxy-optimized:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+    container_name: torrentio-proxy-optimized
+    restart: unless-stopped
+    ports:
+      - "${PORT:-13470}:13470"
+    environment:
+      - PROXY_SERVER_URL=${PROXY_SERVER_URL}
+      - TORRENTIO_URL=${TORRENTIO_URL}
+      - API_KEY=${API_KEY}
+      - PORT=13470
+      - RUST_LOG=${RUST_LOG:-warn}
+    deploy:
+      resources:
+        limits:
+          memory: 10M
+          cpus: '0.5'
+        reservations:
+          memory: 3M
+          cpus: '0.1'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Note: No healthcheck for optimized (scratch base has no wget)
+    profiles:
+      - optimized
+
+  # ============================================================================
+  # With Gluetun VPN (Advanced Setup)
+  # ============================================================================
+  gluetun:
+    image: qmcgaw/gluetun:v3.39.1
+    container_name: torrentio-gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${PORT:-13470}:13470"
+    environment:
+      # VPN Configuration - customize for your provider
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-nordvpn}
+      - VPN_TYPE=${VPN_TYPE:-wireguard}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Netherlands}
+      # Uncomment for OpenVPN
+      # - OPENVPN_USER=${OPENVPN_USER}
+      # - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+    restart: unless-stopped
+    profiles:
+      - vpn
+
+  torrentio-proxy-vpn:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    container_name: torrentio-proxy-vpn
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PROXY_SERVER_URL=${PROXY_SERVER_URL}
+      - TORRENTIO_URL=${TORRENTIO_URL}
+      - API_KEY=${API_KEY}
+      - PORT=13470
+      - RUST_LOG=${RUST_LOG:-info}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 15M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    profiles:
+      - vpn
+
+  # ============================================================================
+  # With Cloudflare Tunnel (Advanced Setup)
+  # ============================================================================
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    container_name: torrentio-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    depends_on:
+      - torrentio-proxy-rust
+    profiles:
+      - cloudflare
+      - tunnel
+
+  # ============================================================================
+  # Complete Setup: Proxy + VPN + Cloudflare Tunnel
+  # ============================================================================
+  torrentio-proxy-complete:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    container_name: torrentio-proxy-complete
+    network_mode: "service:gluetun-complete"
+    depends_on:
+      - gluetun-complete
+    environment:
+      - PROXY_SERVER_URL=${PROXY_SERVER_URL}
+      - TORRENTIO_URL=${TORRENTIO_URL}
+      - API_KEY=${API_KEY}
+      - PORT=13470
+      - RUST_LOG=${RUST_LOG:-info}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 15M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    profiles:
+      - complete
+
+  gluetun-complete:
+    image: qmcgaw/gluetun:v3.39.1
+    container_name: torrentio-gluetun-complete
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${PORT:-13470}:13470"
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-nordvpn}
+      - VPN_TYPE=${VPN_TYPE:-wireguard}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Netherlands}
+    restart: unless-stopped
+    profiles:
+      - complete
+
+  cloudflared-complete:
+    image: cloudflare/cloudflared:2024.12.2
+    container_name: torrentio-cloudflared-complete
+    network_mode: "service:gluetun-complete"
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    depends_on:
+      - gluetun-complete
+      - torrentio-proxy-complete
+    restart: unless-stopped
+    profiles:
+      - complete
+
+# ============================================================================
+# Networks (optional - use if not using network_mode: service)
+# ============================================================================
+networks:
+  default:
+    name: torrentio-network
+    driver: bridge
+
+# ============================================================================
+# Usage Instructions
+# ============================================================================
+#
+# Profiles:
+# ---------
+# default   : Rust version (standard)         -> docker-compose up
+# rust      : Rust version (standard)         -> docker-compose --profile rust up
+# optimized : Rust version (ultra-minimal)    -> docker-compose --profile optimized up
+# node      : Node.js version (legacy)        -> docker-compose --profile node up
+# vpn       : Rust + Gluetun VPN              -> docker-compose --profile vpn up
+# cloudflare: Rust + Cloudflare Tunnel        -> docker-compose --profile cloudflare up
+# complete  : All (Rust + VPN + Tunnel)       -> docker-compose --profile complete up
+#
+# Quick Start:
+# ------------
+# 1. Copy .env.example to .env
+# 2. Edit .env with your configuration
+# 3. docker-compose up -d
+#
+# Common Commands:
+# ----------------
+# docker-compose up -d                    # Start (default: Rust)
+# docker-compose --profile optimized up   # Start optimized version
+# docker-compose --profile vpn up         # Start with VPN
+# docker-compose logs -f                  # View logs
+# docker-compose down                     # Stop and remove
+# docker-compose restart                  # Restart services
+# docker-compose ps                       # Show status
+#
+# Advanced:
+# ---------
+# Override port:           PORT=8080 docker-compose up
+# Change log level:        RUST_LOG=debug docker-compose up
+# Multiple profiles:       docker-compose --profile rust --profile cloudflare up
+#
