@@ -1,5 +1,7 @@
 # Torrentio Debrid Proxy for Stremio
 
+> **Note**: This is a complete Rust rebuild of the [original Node.js project](https://github.com/IrrelevantSoftware/TorrentioDebridProxy), rewritten for significantly better performance, security, and resource efficiency.
+
 This Stremio addon proxies Real-Debrid streaming links from your configured Torrentio instance through your own server. This means Real Debrid will see the same IP address for all streams from all your clients.
 
 It also caches resolved Real-Debrid stream URLs to improve loading times for subsequent requests and reduce requests on the Torrentio API. Note: Sometimes RD connections can hang open, but it shouldn't affect performance. Let me know if it happens to you.
