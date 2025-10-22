@@ -29,14 +29,14 @@ Pre-built multi-architecture (amd64/arm64) images are available on GitHub Contai
 
 ```bash
 # Standard build (~15-20MB)
-docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:latest
+docker pull ghcr.io/hongkongkiwi/torrentiodebridproxy:latest
 
 # Optimized build (~5-8MB)
-docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:latest-optimized
+docker pull ghcr.io/hongkongkiwi/torrentiodebridproxy:latest-optimized
 
 # Specific version
-docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:v1.0.0
-docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:v1.0.0-optimized
+docker pull ghcr.io/hongkongkiwi/torrentiodebridproxy:v1.0.0
+docker pull ghcr.io/hongkongkiwi/torrentiodebridproxy:v1.0.0-optimized
 ```
 
 Images are automatically built and published on every push to `main` (tagged as `:latest`) and on version tags (tagged as `:v*`).
