@@ -1,4 +1,5 @@
 # Node.js dependencies
+/test
 /node_modules/
 
 # Optional npm cache directory
