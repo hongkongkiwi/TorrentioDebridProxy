@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ============================================================================
   # Rust Version (Recommended) - Standard Build
@@ -21,10 +19,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 15M
+          memory: 20M
           cpus: '0.5'
         reservations:
-          memory: 5M
+          memory: 10M
           cpus: '0.1'
     security_opt:
       - no-new-privileges:true
@@ -60,10 +58,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 10M
+          memory: 15M
           cpus: '0.5'
         reservations:
-          memory: 3M
+          memory: 10M
           cpus: '0.1'
     security_opt:
       - no-new-privileges:true
@@ -117,7 +115,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 15M
+          memory: 20M
+        reservations:
+          memory: 10M
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -162,7 +162,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 15M
+          memory: 20M
+        reservations:
+          memory: 10M
     security_opt:
       - no-new-privileges:true
     cap_drop:

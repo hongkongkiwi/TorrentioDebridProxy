@@ -23,6 +23,24 @@ Two Dockerfile variants with different size/convenience tradeoffs:
 1. **Dockerfile.optimized** - Ultra-minimal (~5-8MB) - Uses scratch base + UPX compression
 2. **Dockerfile.rust** - Standard (~15-20MB) - Uses Alpine + static linking + healthcheck
 
+### Pre-built Docker Images
+
+Pre-built multi-architecture (amd64/arm64) images are available on GitHub Container Registry:
+
+```bash
+# Standard build (~15-20MB)
+docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:latest
+
+# Optimized build (~5-8MB)
+docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:latest-optimized
+
+# Specific version
+docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:v1.0.0
+docker pull ghcr.io/irrelevantsoftware/torrentiodebridproxy:v1.0.0-optimized
+```
+
+Images are automatically built and published on every push to `main` (tagged as `:latest`) and on version tags (tagged as `:v*`).
+
 ### Performance Metrics
 
 | Metric | Optimized Build | Standard Build |
